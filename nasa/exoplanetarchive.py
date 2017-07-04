@@ -97,8 +97,9 @@ def extract_urls(ctx, files, format):
 @main.command('bulk-download')
 @click.argument('files', nargs=-1)
 @click.option('--to', help='The output directory.')
+@click.option('--overwrite-existing', is_flag=True, help='Overwrite existing files.')
 @click.pass_context
-def bulk_download(ctx, files, to):
+def bulk_download(ctx, files, to, overwrite_existing):
   """
   Execute the bulk download from NASA-ExAr .bat files without using 'wget'.
   """
@@ -114,18 +115,31 @@ def bulk_download(ctx, files, to):
       output_file = wget.ofile
       if not output_file:
         output_file = posixpath.basename(urlparse(wget.url).path)
-      logger.info('Downloading "%s" ...', output_file)
+      output_file_base = output_file
       if to:
         output_file = os.path.join(to, output_file)
+      if not overwrite_existing and os.path.isfile(output_file):
+        logger.info('Skipping "%s"', output_file)
+        continue
+
+      logger.info('Downloading "%s" ...', output_file)
       response = requests.get(wget.url)
       try:
         response.raise_for_status()
       except Exception as exc:
-        print('  error:', exc)
+        logger.error(exc)
         continue
-      with open(output_file, 'wb') as fp:
-        for chunk in response.iter_content(chunk_size=1024):
-          fp.write(chunk)
+
+      try:
+        with open(output_file, 'wb') as fp:
+          for chunk in response.iter_content(chunk_size=1024):
+            fp.write(chunk)
+      except KeyboardInterrupt:
+        # Do not keep half-completed files.
+        if os.path.isfile(output_file):
+          logger.warn('Removing incomplete download: "%s"', output_file)
+          os.remove(output_file)
+        raise
 
 
 if require.main == module:
