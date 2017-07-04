@@ -19,9 +19,9 @@ provides scripts for the bulk-download that in turn use `wget`. If you don't
 have `wget` installed or you simply want to extract all URLs instead of
 downloading them, this is where *dtools* comes in handy.
 
-For example, you can download the KELT timeseries data from [here][1], extract
-the `.bat` files and pass them to the script to extract the download URLs, or
-download them immediately.
+For example, you can download the KELT timeseries data from [here][1] (which
+are in [IPAC] format), extract the `.bat` files and pass them to the script
+to extract the download URLs, or download them immediately.
 
 __Extract URLs__
 
@@ -44,3 +44,4 @@ __Execute Bulk Download__
 
   [0]: https://exoplanetarchive.ipac.caltech.edu/bulk_data_download/
   [1]: https://exoplanetarchive.ipac.caltech.edu/bulk_data_download/KELT_wget.tar.gz
+  [IPAC]: http://irsa.ipac.caltech.edu/applications/DDGEN/Doc/ipac_tbl.html
