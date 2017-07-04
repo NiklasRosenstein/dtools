@@ -28,10 +28,12 @@ import csv
 import logging
 import os
 import posixpath
+import queue as _queue
 import re
 import requests
 import shlex
 import sys
+import threading
 
 wget_parser = argparse.ArgumentParser()
 wget_parser.add_argument('-O')
@@ -98,8 +100,9 @@ def extract_urls(ctx, files, format):
 @click.argument('files', nargs=-1)
 @click.option('--to', help='The output directory.')
 @click.option('--overwrite-existing', is_flag=True, help='Overwrite existing files.')
+@click.option('--parallel', type=int, help='Number of parallel downloads.', default=1)
 @click.pass_context
-def bulk_download(ctx, files, to, overwrite_existing):
+def bulk_download(ctx, files, to, overwrite_existing, parallel):
   """
   Execute the bulk download from NASA-ExAr .bat files without using 'wget'.
   """
@@ -110,36 +113,67 @@ def bulk_download(ctx, files, to, overwrite_existing):
   if to and not os.path.isdir(to):
     os.makedirs(to)
 
-  for filename in files:
-    for wget in parse_batch_file(filename):
-      output_file = wget.ofile
-      if not output_file:
-        output_file = posixpath.basename(urlparse(wget.url).path)
-      output_file_base = output_file
-      if to:
-        output_file = os.path.join(to, output_file)
-      if not overwrite_existing and os.path.isfile(output_file):
-        logger.info('Skipping "%s"', output_file)
-        continue
+  def process(output_file, url):
+    logger.info('Downloading "%s" ...', os.path.basename(output_file))
+    response = requests.get(wget.url)
 
-      logger.info('Downloading "%s" ...', output_file)
-      response = requests.get(wget.url)
-      try:
-        response.raise_for_status()
-      except Exception as exc:
-        logger.error(exc)
-        continue
+    try:
+      response.raise_for_status()
+    except Exception as exc:
+      logger.error(exc)
+      return
 
-      try:
-        with open(output_file, 'wb') as fp:
-          for chunk in response.iter_content(chunk_size=1024):
-            fp.write(chunk)
-      except KeyboardInterrupt:
-        # Do not keep half-completed files.
-        if os.path.isfile(output_file):
-          logger.warn('Removing incomplete download: "%s"', output_file)
-          os.remove(output_file)
-        raise
+    try:
+      with open(output_file, 'wb') as fp:
+        for chunk in response.iter_content(chunk_size=1024):
+          fp.write(chunk)
+    except KeyboardInterrupt:
+      # Do not keep half-completed files.
+      if os.path.isfile(output_file):
+        logger.warn('Removing incomplete download: "%s"', output_file)
+        os.remove(output_file)
+      raise
+
+  if parallel > 1:
+    queue = _queue.Queue(parallel)
+    _process = process
+
+    def worker(index):
+      logger.info('Thread %s started.', index)
+      while True:
+        data = queue.get()
+        if data is None:
+          logger.info('Thread %s stopped.', index)
+          break
+        _process(*data)
+
+    def process(output_file, url):
+      queue.put((output_file, url))
+
+    logger.info('Spawning %s threads ...', parallel)
+    threads = [threading.Thread(target=worker, args=[i]) for i in range(parallel)]
+    [t.start() for t in threads]
+
+  try:
+    for filename in files:
+      for wget in parse_batch_file(filename):
+        output_file = wget.ofile
+        if not output_file:
+          output_file = posixpath.basename(urlparse(wget.url).path)
+        if to:
+          output_file = os.path.join(to, output_file)
+        if not overwrite_existing and os.path.isfile(output_file):
+          logger.info('Skipping "%s"', os.path.basename(output_file))
+          continue
+
+        process(output_file, wget.url)
+  finally:
+    if parallel > 1:
+      while not queue.empty():
+        queue.get()
+      logger.info('Waiting for threads ...')
+      [queue.put(None) for __ in range(len(threads))]
+      [t.join() for t in threads]
 
 
 if require.main == module:
