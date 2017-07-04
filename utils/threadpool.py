@@ -54,23 +54,29 @@ class ThreadPool(object):
   def __enter__(self):
     " Start all threads in the pool. "
 
-    if self.num_workers == 0 and self.optimize:
-      return
-    if self.threads is not None:
+    if self.running:
       raise RuntimeError('ThreadPool is not reentrant.')
+    self._running.set()
+
+    if self.num_workers == 0 and self.optimize:
+      # We execute submitted functions directly in this case.
+      return
+
+    # Start the threads.
     self.threads = [
       threading.Thread(target=self.__worker, args=[i])
       for i in range(self.num_workers)
     ]
     [t.start() for t in self.threads]
-    self._running.set()
     return self
 
   def __exit__(self, *args):
     " Blocks until all threads are finished. "
 
+    if not self.running:
+      raise RuntimeError('ThreadPool not running')
+    self._running.clear()
     if self.threads is not None:
-      self._running.clear()
       [self.queue.put(None) for i in range(self.num_workers)]
       [t.join() for t in self.threads]
       self.threads = None
@@ -93,6 +99,8 @@ class ThreadPool(object):
             traceback.print_exc()
 
   def submit(self, __function, *args, **kwargs):
+    if not self.running:
+      raise RuntimeError('ThreadPool is not running')
     if self.num_workers == 1 and self.optimize:
       __function(*args, **kwargs)
     else:
