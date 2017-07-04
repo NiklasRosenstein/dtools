@@ -17,8 +17,6 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-"""
-"""
 
 from urllib.parse import urlparse
 import argparse
@@ -28,12 +26,11 @@ import csv
 import logging
 import os
 import posixpath
-import queue as _queue
 import re
 import requests
 import shlex
 import sys
-import threading
+import ThreadPool from '../utils/threadpool'
 
 wget_parser = argparse.ArgumentParser()
 wget_parser.add_argument('-O')
@@ -113,19 +110,19 @@ def bulk_download(ctx, files, to, overwrite_existing, parallel):
   if to and not os.path.isdir(to):
     os.makedirs(to)
 
-  def process(output_file, url):
+  def process(pool, output_file, url):
     logger.info('Downloading "%s" ...', os.path.basename(output_file))
     response = requests.get(wget.url)
-
     try:
       response.raise_for_status()
     except Exception as exc:
       logger.error(exc)
       return
-
     try:
       with open(output_file, 'wb') as fp:
         for chunk in response.iter_content(chunk_size=1024):
+          if not pool.running:
+            raise KeyboardInterrupt()
           fp.write(chunk)
     except KeyboardInterrupt:
       # Do not keep half-completed files.
@@ -134,27 +131,7 @@ def bulk_download(ctx, files, to, overwrite_existing, parallel):
         os.remove(output_file)
       raise
 
-  if parallel > 1:
-    queue = _queue.Queue(parallel)
-    _process = process
-
-    def worker(index):
-      logger.info('Thread %s started.', index)
-      while True:
-        data = queue.get()
-        if data is None:
-          logger.info('Thread %s stopped.', index)
-          break
-        _process(*data)
-
-    def process(output_file, url):
-      queue.put((output_file, url))
-
-    logger.info('Spawning %s threads ...', parallel)
-    threads = [threading.Thread(target=worker, args=[i]) for i in range(parallel)]
-    [t.start() for t in threads]
-
-  try:
+  with ThreadPool(parallel) as pool:
     for filename in files:
       for wget in parse_batch_file(filename):
         output_file = wget.ofile
@@ -166,14 +143,7 @@ def bulk_download(ctx, files, to, overwrite_existing, parallel):
           logger.info('Skipping "%s"', os.path.basename(output_file))
           continue
 
-        process(output_file, wget.url)
-  finally:
-    if parallel > 1:
-      while not queue.empty():
-        queue.get()
-      logger.info('Waiting for threads ...')
-      [queue.put(None) for __ in range(len(threads))]
-      [t.join() for t in threads]
+        pool.submit(process, pool, output_file, wget.url)
 
 
 if require.main == module:
