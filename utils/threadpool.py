@@ -93,6 +93,7 @@ class ThreadPool(object):
     while True:
       func = self.queue.get()
       if func is None or not self.running:
+        self.queue.task_done()
         break
       try:
         func()
@@ -102,6 +103,8 @@ class ThreadPool(object):
         else:
           if not isinstance(exc, KeyboardInterrupt):
             traceback.print_exc()
+      finally:
+        self.queue.task_done()
 
   def submit(self, __function, *args, **kwargs):
     if not self.running:
