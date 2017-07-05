@@ -72,17 +72,42 @@ class BaseConsole(metaclass=abc.ABCMeta):
 
     return object.__getattribute__(self, name)
 
+  @abc.abstractmethod
+  def update(self):
+    """
+    Should be called before any other method is used or property being
+    retrieved.
+    """
+
   @abc.abstractproperty
-  def size(self):
+  def screen_size(self):
     """
     Retrieves the terminal size in (x, y) coordinates.
     """
 
   @abc.abstractproperty
-  def offset(self):
+  def screen_offset(self):
     """
     Returns the terminal screen offset in the terminal buffer. Adding this
     to the #size gives the buffer size.
+    """
+
+  @abc.abstractproperty
+  def buffer_size(self):
+    """
+    Retrieves the buffer size (x, y) coordinates.
+    """
+
+  @abc.abstractproperty
+  def location(self):
+    """
+    Returns a tuple of (x, y) coordinates relative to the terminal screen.
+    """
+
+  @abc.abstractmethod
+  def location_in_buffer(self):
+    """
+    Returns a tuple of absolute (x, y) coordinates inside the buffer.
     """
 
   @abc.abstractproperty
@@ -92,18 +117,18 @@ class BaseConsole(metaclass=abc.ABCMeta):
     the operations on the #BaseConsole have no effect.
     """
 
-  @abc.abstractproperty
-  def location(self):
-    """
-    Returns a tuple of (x, y) coordinates that represent the cursors current
-    position in the terminal screen.
-    """
-
   @abc.abstractmethod
   def move(self, x=None, y=None):
     """
-    Set the current cursor coordinates. *x* and *y* can both be omitted when
-    the cursor position should not be modified.
+    Set the current cursor coordinates in terminal screen coordinates. *x*
+    and *y* can both be omitted when the cursor position should not be
+    modified.
+    """
+
+  @abc.abstractmethod
+  def move_in_buffer(self, x=None, y=None):
+    """
+    Set the current cursor coordinates from absolute buffer coordinates.
     """
 
   @contextlib.contextmanager
@@ -120,6 +145,19 @@ class BaseConsole(metaclass=abc.ABCMeta):
       yield
     finally:
       self.move(*pos)
+
+  @contextlib.contextmanager
+  def movectx_in_buffer(self, x=None, y=None):
+    """
+    Same as #movectx() but uses #move_in_buffer() and #location_in_buffer.
+    """
+
+    pos = self.location_in_buffer
+    self.move_in_buffer(x, y)
+    try:
+      yield
+    finally:
+      self.move_in_buffer(*pos)
 
   def title(self, title):
     """
@@ -211,39 +249,50 @@ class WindowsConsole(BaseConsole):
     else:
       self._hconsole is None
 
-  def _get_info(self):
+  def update(self):
     self._lib.GetConsoleScreenBufferInfo(self._hconsole, ctypes.byref(self._info))
 
   @property
-  def size(self):
+  def screen_size(self):
     if self._hconsole is None:
       return (0, 0)
-    self._get_info()
     win = self._info.srWindow
     return (win.right - win.left + 1, win.bottom - win.top + 1)
 
   @property
-  def offset(self):
+  def screen_offset(self):
     if self._hconsole is None:
       return (0, 0)
-    self._get_info()
     win = self._info.srWindow
     return win.left, win.top
 
   @property
-  def isatty(self):
-    return self._hconsole is not None
+  def buffer_size(self):
+    if self._hconsole is None:
+      return (0, 0)
+    size = self._info.dwSize
+    return size.x, size.y
 
   @property
   def location(self):
     if self._hconsole is None:
       return (0, 0)
-    self._get_info()
     pos = self._info.dwCursorPosition
     win = self._info.srWindow
     return pos.x - win.left, pos.y - win.top
 
-  def move(self, x=None, y=None):
+  @property
+  def location_in_buffer(self):
+    if self._hconsole is None:
+      return (0, 0)
+    pos = self._info.dwCursorPosition
+    return pos.x, pos.y
+
+  @property
+  def isatty(self):
+    return self._hconsole is not None
+
+  def move(self, x=None, y=None, *, _relative=True):
     if self._hconsole is None:
       return
     if x is None:
@@ -252,9 +301,15 @@ class WindowsConsole(BaseConsole):
       x = self.location[0]
     elif y is None:
       y = self.location[1]
-    win = self._info.srWindow
-    pos = _COORD(x + win.left, y + win.top)
+    if _relative:
+      win = self._info.srWindow
+      x += win.left
+      y += win.top
+    pos = _COORD(x, y)
     self._lib.SetConsoleCursorPosition(self._hconsole, pos)
+
+  def move_in_buffer(self, x=None, y=None):
+    self.move(x, y, _relative=False)
 
 
 ## Exports ##

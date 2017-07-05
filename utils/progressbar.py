@@ -67,8 +67,8 @@ class ProgressBar(progressbar.ProgressBar):
         indent = ' ' * indent
       self.widgets.insert(0, indent)
 
-    location = console.location
-    offset = console.offset
+    location = console.location_in_buffer
+    offset = console.screen_offset
 
     # FIXME: When the end of the buffer and terminal screen is reached,
     # the first ProgressBar is overwritten by the second one. We need a
@@ -76,7 +76,7 @@ class ProgressBar(progressbar.ProgressBar):
 
     # If we're at the last line in the buffer, we have to account for
     # scrolling in the terminal window.
-    if location[1] == (console.size[1] - 1):
+    if location[1] == (console.screen_size[1] - 1):
       for bar in bars:
         bar.location = (bar.location[0], bar.location[1] - 1)
     # If the Y-location of this bar matches the Y-location of the previous
@@ -93,11 +93,11 @@ class ProgressBar(progressbar.ProgressBar):
 
   def update(self, *args, **kwargs):
     # Update the location if the window was scrolled.
-    offset = console.offset
+    offset = console.screen_offset
     delta = self.offset[0] - offset[0], self.offset[1] - offset[1]
     location = self.location[0] + delta[0], self.location[1] + delta[1]
     #location = self.location
-    with console.movectx(*location):
+    with console.movectx_in_buffer(*location):
       return progressbar.ProgressBar.update(self, *args, **kwargs)
 
 
