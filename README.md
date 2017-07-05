@@ -4,6 +4,16 @@
 
 Tools for downloading and preparing datasets.
 
+---
+
+__Table of Contents__
+
+* [Usage](#usage)
+* [ESA Gaia Archive](#esa-gaia-archive)
+* [NASA Exoplanet Archive](#nasa-exoplanet-archive)
+
+---
+
 ## Usage
 
 * Install [Node.py] with `pip3 install node.py`
@@ -11,6 +21,44 @@ Tools for downloading and preparing datasets.
 * Run any script as `nodepy3 <path/to/script>`
 
   [Node.py]: https://nodepy.org/
+
+## ESA Gaia Archive
+
+The ESA's ([European Space Agency][3]) [GAIA satellite][4] data archive can
+be found [here][2]. They provide a bulk download option in various formats.
+With *dtools*, you can easily download all or specific parts from the archive.
+
+    $ nodepy esa/gaia --parallel 4 --to ~/Desktop/GAIA
+    [INFO - 2017-07-05 13:21:13,576]: Downloading "GaiaSource_000-000-003.csv.gz" ...
+    [INFO - 2017-07-05 13:21:13,577]: Downloading "GaiaSource_000-000-001.csv.gz" ...
+    [INFO - 2017-07-05 13:21:13,585]: Downloading "GaiaSource_000-000-000.csv.gz" ...
+    [INFO - 2017-07-05 13:21:13,589]: Downloading "GaiaSource_000-000-002.csv.gz" ...
+    [INFO - 2017-07-05 13:21:38,830]: Unpacking "GaiaSource_000-000-001.csv.gz" ...
+    [INFO - 2017-07-05 13:21:39,713]: Downloading "GaiaSource_000-000-004.csv.gz" ...
+    ...
+
+__Options__
+
+    $ nodepy esa/gaia --help
+    Usage: gaia.py [OPTIONS]
+
+    Options:
+    --parallel INTEGER           Parallel downloads.
+    --source [gaia|tgas]
+    --format [csv|fits|votable]
+    --root [gdr1|Gaia]
+    --range1 PARSE_RANGE
+    --range2 PARSE_RANGE
+    --range3 PARSE_RANGE
+    --generate-urls
+    --to TEXT                    Destination download folder.
+    --unpack / --no-unpack       Unpack downloaded archives.
+    --overwrite-existing
+    --help                       Show this message and exit.
+
+  [2]: http://gea.esac.esa.int/archive/
+  [3]: http://sci.esa.int/
+  [4]: http://sci.esa.int/gaia/
 
 ## NASA Exoplanet Archive
 

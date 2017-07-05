@@ -32,16 +32,16 @@ class BatchDownloader(object):
     self.logger = logger or logging
 
   def __downloader(self, url, ofile, desc, done_callback):
-    self.logger.info('Downloading "%s" ...', desc)
     try:
-      response = requests.get(url)
+      response = requests.get(url, stream=True)
       response.raise_for_status()
     except Exception as exc:
-      logger.error(exc)
+      self.logger.error(exc)
       if done_callback:
-        done_callback(url, ofile, exc)
+        done_callback()
       return
 
+    self.logger.info('Downloading "%s" ...', desc)
     content_length = response.headers.get('Content-length')
     if content_length is not None:
       content_length = int(content_length)
@@ -52,6 +52,7 @@ class BatchDownloader(object):
       with open(ofile, 'wb') as fp:
         for chunk in response.iter_content(chunk_size=1024):
           if not self.pool.running:
+            self.logger.info('Aborting download "%s"', desc)
             raise KeyboardInterrupt
           fp.write(chunk)
           bytes_read += len(chunk)
@@ -64,13 +65,13 @@ class BatchDownloader(object):
           self.logger.error('Could not remove incomplete file "%s": %s', ofile, exc)
         else:
           self.logger.info('Removed incomplete file "%s"', ofile)
-      return
+      raise
     except Exception as _exc:
       exc = _exc
       self.logger.error(exc)
     finally:
       if done_callback:
-        done_callback(url, ofile, exc)
+        done_callback()
 
   def __enter__(self):
     self.pool.start()

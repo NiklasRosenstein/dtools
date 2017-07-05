@@ -131,7 +131,7 @@ def bulk_download(ctx, files, to, overwrite_existing, parallel):
         os.remove(output_file)
       raise
 
-  with BatchDownloader(parallel) as downloader:
+  with BatchDownloader(parallel, logger) as downloader:
     for filename in files:
       for wget in parse_batch_file(filename):
         output_file = wget.ofile
