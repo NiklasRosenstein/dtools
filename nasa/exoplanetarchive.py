@@ -30,7 +30,7 @@ import re
 import requests
 import shlex
 import sys
-import ThreadPool from '../utils/threadpool'
+import BatchDownloader from '../utils/batchdownloader'
 
 wget_parser = argparse.ArgumentParser()
 wget_parser.add_argument('-O')
@@ -131,7 +131,7 @@ def bulk_download(ctx, files, to, overwrite_existing, parallel):
         os.remove(output_file)
       raise
 
-  with ThreadPool(parallel) as pool:
+  with BatchDownloader(parallel) as downloader:
     for filename in files:
       for wget in parse_batch_file(filename):
         output_file = wget.ofile
@@ -143,7 +143,7 @@ def bulk_download(ctx, files, to, overwrite_existing, parallel):
           logger.info('Skipping "%s"', os.path.basename(output_file))
           continue
 
-        pool.submit(process, pool, output_file, wget.url)
+        downloader.submit(wget.url, output_file)
 
 
 if require.main == module:
