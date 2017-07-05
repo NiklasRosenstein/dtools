@@ -108,7 +108,7 @@ def main(parallel, source, format, root, range1, range2, range3, generate_urls, 
   if range3 is None:
     range3 = range(0, 256) if source == 'gaia' else range(16)
 
-  urls = generate_download_urls('gdr1', 'gaia', 'csv', range1, range2, range3)
+  urls = generate_download_urls(root, source, format, range1, range2, range3)
   if generate_urls:
     for url in urls:
       print(url)
