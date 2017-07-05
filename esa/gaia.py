@@ -96,7 +96,7 @@ def parse_range(string):
 @click.option('--range3', type=parse_range)
 @click.option('--generate-urls', is_flag=True)
 @click.option('--to', help='Destination download folder.')
-@click.option('--unpack/--no-unpack', default=True, help='Unpack downloaded archives.')
+@click.option('--unpack/--no-unpack', default=False, help='Unpack downloaded archives.')
 @click.option('--overwrite-existing', is_flag=True)
 def main(parallel, source, format, root, range1, range2, range3, generate_urls, to, unpack, overwrite_existing):
   logging.basicConfig(level=logging.INFO, format='[%(levelname)s - %(asctime)s]: %(message)s')
@@ -118,7 +118,7 @@ def main(parallel, source, format, root, range1, range2, range3, generate_urls, 
     os.makedirs(to)
 
   def download_finished(output_file):
-    if output_file.endswith('.gz'):
+    if output_file.endswith('.gz') and unpack:
       logger.info('Unpacking "%s" ...', os.path.basename(output_file))
       with gzip.open(output_file) as src:
         with open(output_file[:-3], 'wb') as dst:
