@@ -54,6 +54,14 @@ class ThreadPool(object):
   def __enter__(self):
     " Start all threads in the pool. "
 
+    self.start()
+
+  def __exit__(self, *args):
+    " Blocks until all threads are finished. "
+
+    self.stop(join=True)
+
+  def start(self):
     if self.running:
       raise RuntimeError('ThreadPool is not reentrant.')
     self._running.set()
@@ -70,19 +78,16 @@ class ThreadPool(object):
     [t.start() for t in self.threads]
     return self
 
-  def __exit__(self, *args):
-    " Blocks until all threads are finished. "
-
+  def stop(self, join=True):
     if not self.running:
       raise RuntimeError('ThreadPool not running')
     self._running.clear()
     if self.threads is not None:
       [self.queue.put(None) for i in range(self.num_workers)]
-      [t.join() for t in self.threads]
+      if join:
+        [t.join() for t in self.threads]
+        self.queue.join()
       self.threads = None
-
-  start = __enter__
-  stop = __exit__
 
   def __worker(self, index):
     while True:
@@ -106,6 +111,9 @@ class ThreadPool(object):
     else:
       func = functools.partial(__function, *args, **kwargs)
       self.queue.put(func)
+
+  def join(self):
+    self.queue.join()
 
 
 exports = ThreadPool

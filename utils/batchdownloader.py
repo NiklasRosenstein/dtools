@@ -77,7 +77,9 @@ class BatchDownloader(object):
     self.pool.start()
     return self
 
-  def __exit__(self, *args):
+  def __exit__(self, exc_type, exc_value, exc_tb):
+    if exc_value is None:
+      self.pool.join()
     self.pool.stop()
 
   def stop(self):
