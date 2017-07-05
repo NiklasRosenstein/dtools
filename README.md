@@ -28,7 +28,7 @@ The ESA's ([European Space Agency][3]) [GAIA satellite][4] data archive can
 be found [here][2]. They provide a bulk download option in various formats.
 With *dtools*, you can easily download all or specific parts from the archive.
 
-    $ nodepy esa/gaia --parallel 4 --to ~/Desktop/GAIA --unpack
+    $ nodepy esa/gaia --parallel 4 --to ~/Desktop/GAIA --unpack --range2 0
     [INFO - 2017-07-05 13:21:13,576]: Downloading "GaiaSource_000-000-003.csv.gz" ...
     [INFO - 2017-07-05 13:21:13,577]: Downloading "GaiaSource_000-000-001.csv.gz" ...
     [INFO - 2017-07-05 13:21:13,585]: Downloading "GaiaSource_000-000-000.csv.gz" ...
@@ -55,6 +55,11 @@ __Options__
     --unpack / --no-unpack       Unpack downloaded archives.
     --overwrite-existing
     --help                       Show this message and exit.
+
+> *Note*: The full GAIA table (as of 2017/07/05) features 5231 table parts
+> and its full uncompressed size amounts to about 510GB! The TGAS table
+> consists of 16 parts and amounts to about 1.5GB (uncompressed).
+
 
   [2]: http://gea.esac.esa.int/archive/
   [3]: http://sci.esa.int/
