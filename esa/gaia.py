@@ -20,6 +20,8 @@
 
 from typing import Iterable
 import click
+import codecs
+import csv
 import functools
 import itertools
 import logging
@@ -27,6 +29,7 @@ import gzip
 import os
 import posixpath
 import shutil
+import sys
 import urllib.parse
 import {BatchDownloader} from '../utils/batchdownloader'
 
@@ -86,7 +89,12 @@ def parse_range(string):
   return range(start, end+1)
 
 
-@click.command()
+@click.group()
+def main():
+  logging.basicConfig(level=logging.INFO, format='[%(levelname)s - %(asctime)s]: %(message)s')
+
+
+@main.group()
 @click.option('--parallel', type=int, default=1, help='Parallel downloads.')
 @click.option('--source', default='gaia', type=click.Choice(['gaia', 'tgas']))
 @click.option('--format', default='csv', type=click.Choice(['csv', 'fits', 'votable']))
@@ -98,8 +106,8 @@ def parse_range(string):
 @click.option('--to', help='Destination download folder.')
 @click.option('--unpack/--no-unpack', default=False, help='Unpack downloaded archives.')
 @click.option('--overwrite-existing', is_flag=True)
-def main(parallel, source, format, root, range1, range2, range3, generate_urls, to, unpack, overwrite_existing):
-  logging.basicConfig(level=logging.INFO, format='[%(levelname)s - %(asctime)s]: %(message)s')
+def download(parallel, source, format, root, range1, range2, range3, generate_urls, to, unpack, overwrite_existing):
+  " Download table parts from the ESA. "
 
   if range1 is None:
     range1 = range(1)
@@ -135,6 +143,39 @@ def main(parallel, source, format, root, range1, range2, range3, generate_urls, 
 
       downloader.submit(url, outfile,
         done_callback=functools.partial(download_finished, outfile))
+
+
+@main.command()
+@click.argument('directory')
+@click.argument('suffix')
+@click.option('--has-header/--no-header')
+@click.pass_context
+def join(ctx, directory, suffix, has_header):
+  " Join CSV tables into one. "
+
+  files = []
+  for name in os.listdir(directory):
+    if name.endswith(suffix):
+      files.append(name)
+  files.sort()
+  if not files:
+    ctx.fail('no input files')
+
+  count = 0
+  for index, name in enumerate(files):
+    filename = os.path.join(directory, name)
+    if name.endswith('.gz'):
+      fp = gzip.open(filename)
+    else:
+      fp = open(filename, 'rb')
+    try:
+      fp = codecs.getreader('utf8')(fp)
+      if has_header and index != 0:
+        fp.readline()
+      for line in fp:
+        print(line)
+    finally:
+      fp.close()
 
 
 if require.main == module:
