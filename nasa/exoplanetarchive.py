@@ -30,7 +30,7 @@ import re
 import requests
 import shlex
 import sys
-import BatchDownloader from '../utils/batchdownloader'
+import {BatchDownloader} from '../utils/batchdownloader'
 
 wget_parser = argparse.ArgumentParser()
 wget_parser.add_argument('-O')

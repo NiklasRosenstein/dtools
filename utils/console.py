@@ -316,8 +316,8 @@ class WindowsConsole(BaseConsole):
 #############
 
 if blessed:
-  exports = BlessedConsole()
+  module.exports = BlessedConsole()
 elif os.name == 'nt':
-  exports = WindowsConsole()
+  module.exports = WindowsConsole()
 else:
   raise EnvironmentError("no console implementation found")

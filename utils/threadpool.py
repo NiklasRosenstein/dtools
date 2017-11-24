@@ -117,6 +117,3 @@ class ThreadPool(object):
 
   def join(self):
     self.queue.join()
-
-
-exports = ThreadPool

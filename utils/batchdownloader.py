@@ -23,7 +23,7 @@ import logging
 import posixpath
 import requests
 import urllib.parse
-import ThreadPool from './threadpool'
+import {ThreadPool} from './threadpool'
 
 class BatchDownloader(object):
 
@@ -89,6 +89,3 @@ class BatchDownloader(object):
     if not desc:
       desc = posixpath.basename(urllib.parse.urlparse(url).path)
     self.pool.submit(self.__downloader, url, ofile, desc, done_callback)
-
-
-exports = BatchDownloader
