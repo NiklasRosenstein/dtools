@@ -11,6 +11,7 @@
     "blessed": ">=1.14.2",
     "click": ">=6.7",
     "colorama": ">=0.3.9",
+    "nr.futures": ">=1.0.0",
     "progressbar2": ">=3.30.2",
     "requests": ">=2.18.1"
   }
