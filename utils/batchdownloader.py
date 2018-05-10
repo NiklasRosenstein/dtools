@@ -21,17 +21,17 @@
 import os
 import logging
 import posixpath
+import nr.futures
 import requests
 import urllib.parse
-import {ThreadPool} from './threadpool'
 
 class BatchDownloader(object):
 
   def __init__(self, num_workers=1, logger=None):
-    self.pool = ThreadPool(num_workers)
+    self.pool = nr.futures.ThreadPool(num_workers)
     self.logger = logger or logging
 
-  def __downloader(self, url, ofile, desc, done_callback):
+  def __download(self, url, ofile, desc, done_callback, future):
     try:
       response = requests.get(url, stream=True)
       response.raise_for_status()
@@ -51,7 +51,7 @@ class BatchDownloader(object):
       exc = None
       with open(ofile, 'wb') as fp:
         for chunk in response.iter_content(chunk_size=1024):
-          if not self.pool.running:
+          if future.cancelled():
             self.logger.info('Aborting download "%s"', desc)
             raise KeyboardInterrupt
           fp.write(chunk)
@@ -65,7 +65,7 @@ class BatchDownloader(object):
           self.logger.error('Could not remove incomplete file "%s": %s', ofile, exc)
         else:
           self.logger.info('Removed incomplete file "%s"', ofile)
-      raise
+      return
     except Exception as _exc:
       exc = _exc
       self.logger.error(exc)
@@ -74,18 +74,30 @@ class BatchDownloader(object):
         done_callback()
 
   def __enter__(self):
-    self.pool.start()
     return self
 
   def __exit__(self, exc_type, exc_value, exc_tb):
-    if exc_value is None:
-      self.pool.join()
-    self.pool.stop()
+    if exc_value is not None:
+      self.pool.cancel()
+    self.pool.shutdown(False)
+    # Busy wait for the pool to complete so that we can catch keyboard
+    # interrupts and cancel the downloads.
+    try:
+      while not self.pool.wait(1):
+        pass
+    except:
+      self.pool.cancel()
+      self.pool.wait()
+      raise
 
   def stop(self):
-    self.pool.stop()
+    self.pool.cancel()
+    self.pool.shutdown()
 
   def submit(self, url, ofile, desc=None, done_callback=None):
     if not desc:
       desc = posixpath.basename(urllib.parse.urlparse(url).path)
-    self.pool.submit(self.__downloader, url, ofile, desc, done_callback)
+    future = nr.futures.Future()
+    future.bind(self.__download, url, ofile, desc, done_callback, future)
+    self.pool.enqueue(future)
+    return future

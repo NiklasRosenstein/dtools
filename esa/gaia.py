@@ -18,129 +18,87 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from typing import Iterable
-import click
-import codecs
-import csv
-import functools
-import itertools
+from functools import partial
+from itertools import islice
+
+import argparse
+import bs4
 import logging
 import gzip
 import os
 import posixpath
+import requests
 import shutil
-import sys
 import urllib.parse
+
 import {BatchDownloader} from '../utils/batchdownloader'
 
 logger = logging.getLogger(__name__)
 
 
-def generate_download_urls(
-  root:str, source:str, format:str,
-  range1:Iterable, range2:Iterable, range3:Iterable
-):
-  """
-  Generates download URLs from the ESA (European Space Agency) content
-  delivery network (http://cdn.gea.esac.esa.int/).
-
-  # Parameters
-  root: "Gaia" or "gdr1" (both the same thing).
-  source: "gaia" or "tgas"
-  format: "csv", "fits" or "votable"
-  range1: Iterable yielding numbers between 000 and 999.
-  range2: See *range1*.
-  range3: See *range1*.
-  """
-
-  if root not in ('Gaia', 'gdr1'):
-    raise ValueError('invalid root: {!r}'.format(root))
-  if source not in ('gaia', 'tgas'):
-    raise ValueError('invalid source: {!r}'.format(source))
-  if format not in ('csv', 'fits', 'votable'):
-    raise ValueError('invalid format: {!r}'.format(format))
-
-  if format == 'csv':
-    suffix = '.csv.gz'
-  elif format == 'fits':
-    suffix = '.fits'
-  elif format == 'votable':
-    suffix = '.vot.gz'
-  else: assert False
-
-  url = 'http://cdn.gea.esac.esa.int/' + root + '/' + source + '_source/'
-  url = url + format + '/' + source[0].upper() + source[1:] + 'Source_'
-
-  for x, y, z in itertools.product(range1, range2, range3):
-    yield url + '{:03d}-{:03d}-{:03d}'.format(x, y, z) + suffix
+def scrape_urls(directory):
+  response = requests.get(directory)
+  response.raise_for_status()
+  doc = bs4.BeautifulSoup(response.text, 'lxml')
+  for link in doc.find_all('a'):
+    if '..' not in link['href']:
+      yield urllib.parse.urljoin(directory + '/', link['href'])
 
 
-def parse_range(string):
-  try:
-    if '-' in string:
-      parts = string.split('-')
-      if len(parts) != 2:
-        raise ValueError
-      start, end = map(int, parts)
-    else:
-      start = end = int(string)
-  except ValueError:
-    raise ValueError('invalid range: {!r}'.format(string)) from None
-  return range(start, end+1)
+def get_argument_parser(prog=None):
+  parser = argparse.ArgumentParser(prog=prog, description='''
+    Download table parts from the ESA GAIA Data Archive.
+  ''')
+  parser.add_argument('path', help='The path to the folder to download from, for example Gaia/gdr2/gaia_source/csv')
+  parser.add_argument('--begin', type=int, help='Slice begin from the download list.')
+  parser.add_argument('--end', type=int, help='Slice end from the download list.')
+  parser.add_argument('--parallel', type=int, default=1, help='Enable parallel downloads.')
+  parser.add_argument('--print-urls', action='store_true', help='Print the download list.')
+  parser.add_argument('--to', help='Destination download folder. Default is the current working directory.')
+  parser.add_argument('--unpack', action='store_true', help='Automatically unpack downloaded archives.')
+  parser.add_argument('--overwrite-existing', action='store_true', help='Overwrite existing files.')
+  return parser
 
 
-@click.command()
-@click.option('--parallel', type=int, default=1, help='Parallel downloads.')
-@click.option('--source', default='gaia', type=click.Choice(['gaia', 'tgas']))
-@click.option('--format', default='csv', type=click.Choice(['csv', 'fits', 'votable']))
-@click.option('--root', default='gdr1', type=click.Choice(['gdr1', 'Gaia']))
-@click.option('--range1', type=parse_range)
-@click.option('--range2', type=parse_range)
-@click.option('--range3', type=parse_range)
-@click.option('--generate-urls', is_flag=True)
-@click.option('--to', help='Destination download folder.')
-@click.option('--unpack/--no-unpack', default=False, help='Unpack downloaded archives.')
-@click.option('--overwrite-existing', is_flag=True)
-def main(parallel, source, format, root, range1, range2, range3, generate_urls, to, unpack, overwrite_existing):
-  " Download table parts from the ESA. "
-
+def main(argv=None, prog=None):
+  parser = get_argument_parser(prog)
+  args = parser.parse_args(argv)
   logging.basicConfig(level=logging.INFO, format='[%(levelname)s - %(asctime)s]: %(message)s')
 
-  if range1 is None:
-    range1 = range(1)
-  if range2 is None:
-    range2 = range(0, 21) if source == 'gaia' else range(1)
-  if range3 is None:
-    range3 = range(0, 256) if source == 'gaia' else range(16)
+  logger.info('Retrieving URL list ...')
+  urls = scrape_urls('http://cdn.gea.esac.esa.int/' + args.path)
+  urls = islice(urls, args.begin, args.end)
 
-  urls = generate_download_urls(root, source, format, range1, range2, range3)
-  if generate_urls:
+  if args.print_urls:
     for url in urls:
       print(url)
     return
 
-  if to and not os.path.isdir(to):
-    os.makedirs(to)
+  if args.to and not os.path.isdir(args.to):
+    logger.info('Creating directory "{}"'.format(args.to))
+    os.makedirs(args.to)
 
-  def download_finished(output_file):
-    if output_file.endswith('.gz') and unpack:
-      logger.info('Unpacking "%s" ...', os.path.basename(output_file))
-      with gzip.open(output_file) as src:
-        with open(output_file[:-3], 'wb') as dst:
-          shutil.copyfileobj(src, dst)
-      os.remove(output_file)
+  try:
+    with BatchDownloader(args.parallel, logger) as downloader:
+      def download_finished(output_file):
+        if output_file.endswith('.gz') and args.unpack:
+          logger.info('Unpacking "%s" ...', os.path.basename(output_file))
+          with gzip.open(output_file) as src:
+            with open(output_file[:-3], 'wb') as dst:
+              shutil.copyfileobj(src, dst)
+          os.remove(output_file)
 
-  with BatchDownloader(parallel, logger) as downloader:
-    for url in urls:
-      basename = posixpath.basename(urllib.parse.urlparse(url).path)
-      outfile = os.path.join(to, basename) if to else basename
-      if os.path.isfile(outfile) and not overwrite_existing:
-        logger.info('Skipping "%s"', basename)
-        continue
+      for url in urls:
+        basename = posixpath.basename(urllib.parse.urlparse(url).path)
+        outfile = os.path.join(args.to, basename) if args.to else basename
+        if os.path.isfile(outfile) and not args.overwrite_existing:
+          logger.info('Skipping "%s"', basename)
+          continue
 
-      downloader.submit(url, outfile,
-        done_callback=functools.partial(download_finished, outfile))
-
+        downloader.submit(url, outfile,
+          done_callback=partial(download_finished, outfile))
+  except KeyboardInterrupt:
+    logger.info('Aborted.')
 
 if require.main == module:
   main()
